@@ -169,20 +169,20 @@ def list_checkins():
                 """
                 SELECT id, full_name, speciality, level, feedback, attendance_date, created_at
                 FROM event_checkins
-                WHERE attendance_date = %s
+                WHERE attendance_date = %s OR DATE(created_at) = %s
                 ORDER BY created_at DESC
                 """,
-                (DAY_16,),
+                (DAY_16, DAY_16),
             )
         elif flt == "19":
             cur.execute(
                 """
                 SELECT id, full_name, speciality, level, feedback, attendance_date, created_at
                 FROM event_checkins
-                WHERE attendance_date = %s
+                WHERE attendance_date = %s OR DATE(created_at) = %s
                 ORDER BY created_at DESC
                 """,
-                (DAY_19,),
+                (DAY_19, DAY_19),
             )
         else:
             cur.execute(
