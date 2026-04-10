@@ -94,33 +94,21 @@ def get_db_config():
 
 
 DB_CONFIG = get_db_config()
-connection_pool = None
-last_pool_error = None
-
-
-def init_db_pool():
-    global connection_pool, last_pool_error
-    if connection_pool is not None:
-        return connection_pool
-    try:
-        connection_pool = pooling.MySQLConnectionPool(
-            pool_name="eci_dash_pool",
-            pool_size=4,
-            **DB_CONFIG,
-        )
-        last_pool_error = None
-        return connection_pool
-    except Exception as e:
-        last_pool_error = str(e)
-        connection_pool = None
-        return None
+db_connection = None
+last_db_error = None
 
 
 def get_db():
-    pool = init_db_pool()
-    if pool is None:
-        raise RuntimeError(f"Database unavailable: {last_pool_error}")
-    return pool.get_connection()
+    global db_connection, last_db_error
+    try:
+        if db_connection is not None and db_connection.is_connected():
+            return db_connection
+        db_connection = mysql.connector.connect(**DB_CONFIG)
+        last_db_error = None
+        return db_connection
+    except Exception as e:
+        last_db_error = str(e)
+        raise RuntimeError(f"Database unavailable: {last_db_error}")
 
 
 DASHBOARD_SECRET = os.getenv("DASHBOARD_SECRET", "").strip()
@@ -145,7 +133,7 @@ def health():
     return jsonify(
         {
             "status": "ok",
-            "db_pool_error": last_pool_error,
+            "db_error": last_db_error,
             "auth_configured": bool(DASHBOARD_SECRET),
         }
     ), 200
@@ -199,17 +187,20 @@ def list_checkins():
                 r["created_at"] = r["created_at"].isoformat()
             if r.get("attendance_date"):
                 r["attendance_date"] = str(r["attendance_date"])
-        return jsonify(rows), 200
+        
+        response = jsonify(rows)
+        response.headers["Cache-Control"] = "public, s-maxage=10, stale-while-revalidate=30"
+        return response, 200
     except Exception as e:
         print(f"[checkins] {e}")
         return jsonify({"error": "Failed to load check-ins"}), 500
     finally:
         if cur:
             cur.close()
-        if conn:
-            conn.close()
+        # Do not close conn to keep the global connection alive
 
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5001))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    from waitress import serve
+    serve(app, host="0.0.0.0", port=port, threads=16)
